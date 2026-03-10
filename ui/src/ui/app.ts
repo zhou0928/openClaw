@@ -107,6 +107,18 @@ function resolveOnboardingMode(): boolean {
   return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
 }
 
+function resolveUrlToken(): string {
+  if (!window.location.search) {
+    return "";
+  }
+  const params = new URLSearchParams(window.location.search);
+  const raw = params.get("token");
+  if (!raw) {
+    return "";
+  }
+  return raw.trim();
+}
+
 @customElement("openclaw-app")
 export class OpenClawApp extends LitElement {
   private i18nController = new I18nController(this);
@@ -115,6 +127,11 @@ export class OpenClawApp extends LitElement {
   @state() settings: UiSettings = loadSettings();
   constructor() {
     super();
+    // Auto-fill token from URL parameter for convenience
+    const urlToken = resolveUrlToken();
+    if (urlToken) {
+      this.settings.token = urlToken;
+    }
     if (isSupportedLocale(this.settings.locale)) {
       void i18n.setLocale(this.settings.locale);
     }
