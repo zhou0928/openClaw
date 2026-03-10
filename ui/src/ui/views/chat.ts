@@ -2,6 +2,7 @@ import { html, nothing } from "lit";
 import { ref } from "lit/directives/ref.js";
 import { repeat } from "lit/directives/repeat.js";
 import {
+  loadUserIdentity,
   renderMessageGroup,
   renderReadingIndicatorGroup,
   renderStreamingGroup,
@@ -301,11 +302,14 @@ export function renderChat(props: ChatProps) {
           }
 
           if (item.kind === "group") {
+            const userIdentity = loadUserIdentity();
             return renderMessageGroup(item, {
               onOpenSidebar: props.onOpenSidebar,
               showReasoning,
               assistantName: props.assistantName,
               assistantAvatar: assistantIdentity.avatar,
+              userName: userIdentity.name,
+              userAvatar: userIdentity.avatar ?? null,
             });
           }
 

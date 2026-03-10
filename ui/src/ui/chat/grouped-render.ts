@@ -14,6 +14,34 @@ import {
 import { isToolResultMessage, normalizeRoleForGrouping } from "./message-normalizer.ts";
 import { extractToolCards, renderToolCardSidebar } from "./tool-cards.ts";
 
+// User identity configuration (stored in localStorage)
+const USER_IDENTITY_KEY = "openclaw.user.identity.v1";
+
+export type UserIdentity = {
+  name?: string;
+  avatar?: string; // emoji, URL, or base64
+};
+
+export function loadUserIdentity(): UserIdentity {
+  try {
+    const raw = localStorage.getItem(USER_IDENTITY_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as UserIdentity;
+      return {
+        name: typeof parsed.name === "string" ? parsed.name : undefined,
+        avatar: typeof parsed.avatar === "string" ? parsed.avatar : undefined,
+      };
+    }
+  } catch {
+    // ignore
+  }
+  return {};
+}
+
+export function saveUserIdentity(identity: UserIdentity): void {
+  localStorage.setItem(USER_IDENTITY_KEY, JSON.stringify(identity));
+}
+
 type ImageBlock = {
   url: string;
   alt?: string;
@@ -112,11 +140,13 @@ export function renderMessageGroup(
     showReasoning: boolean;
     assistantName?: string;
     assistantAvatar?: string | null;
+    userName?: string;
+    userAvatar?: string | null;
   },
 ) {
   const normalizedRole = normalizeRoleForGrouping(group.role);
   const assistantName = opts.assistantName ?? "Assistant";
-  const userLabel = group.senderLabel?.trim();
+  const userLabel = opts.userName?.trim() ?? group.senderLabel?.trim();
   const who =
     normalizedRole === "user"
       ? (userLabel ?? "You")
@@ -132,10 +162,14 @@ export function renderMessageGroup(
 
   return html`
     <div class="chat-group ${roleClass}">
-      ${renderAvatar(group.role, {
-        name: assistantName,
-        avatar: opts.assistantAvatar ?? null,
-      })}
+      ${renderAvatar(
+        group.role,
+        {
+          name: assistantName,
+          avatar: opts.assistantAvatar ?? null,
+        },
+        opts.userAvatar ?? null,
+      )}
       <div class="chat-group-messages">
         ${group.messages.map((item, index) =>
           renderGroupedMessage(
@@ -156,13 +190,24 @@ export function renderMessageGroup(
   `;
 }
 
-function renderAvatar(role: string, assistant?: Pick<AssistantIdentity, "name" | "avatar">) {
+function renderAvatar(
+  role: string,
+  assistant?: Pick<AssistantIdentity, "name" | "avatar">,
+  userAvatar?: string | null,
+) {
   const normalized = normalizeRoleForGrouping(role);
   const assistantName = assistant?.name?.trim() || "Assistant";
   const assistantAvatar = assistant?.avatar?.trim() || "";
+
+  // Load user identity from localStorage if not provided
+  const userIdentity = userAvatar === null ? loadUserIdentity() : { avatar: userAvatar };
+  const effectiveUserAvatar = userAvatar ?? userIdentity.avatar;
+
   const initial =
     normalized === "user"
-      ? "U"
+      ? effectiveUserAvatar && effectiveUserAvatar.length === 2 && isEmoji(effectiveUserAvatar)
+        ? effectiveUserAvatar
+        : "U"
       : normalized === "assistant"
         ? assistantName.charAt(0).toUpperCase() || "A"
         : normalized === "tool"
@@ -177,6 +222,19 @@ function renderAvatar(role: string, assistant?: Pick<AssistantIdentity, "name" |
           ? "tool"
           : "other";
 
+  // Handle user avatar
+  if (normalized === "user" && effectiveUserAvatar) {
+    if (isAvatarUrl(effectiveUserAvatar)) {
+      return html`<img
+        class="chat-avatar ${className}"
+        src="${effectiveUserAvatar}"
+        alt="User"
+      />`;
+    }
+    // Emoji or text avatar
+    return html`<div class="chat-avatar ${className}">${effectiveUserAvatar}</div>`;
+  }
+
   if (assistantAvatar && normalized === "assistant") {
     if (isAvatarUrl(assistantAvatar)) {
       return html`<img
@@ -189,6 +247,13 @@ function renderAvatar(role: string, assistant?: Pick<AssistantIdentity, "name" |
   }
 
   return html`<div class="chat-avatar ${className}">${initial}</div>`;
+}
+
+function isEmoji(str: string): boolean {
+  // Simple emoji detection - checks if the string is a single emoji character
+  const emojiRegex =
+    /^(?:[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F900}-\u{1F9FF}]|[\u{1F018}-\u{1F270}]|[\u{238C}]|[\u{2B06}]|[\u{2B07}]|[\u{2B05}]|[\u{27A1}]|[\u{2194}-\u{2199}]|[\u{21AA}]|[\u{21A9}]|[\u{1F201}]|[\u{1F200}]|[\u{1F202}]|[\u{1F237}]|[\u{1F236}]|[\u{1F22F}]|[\u{1F250}]|[\u{1F239}]|[\u{1F21A}]|[\u{1F232}]|[\u{1F251}]|[\u{3299}]|[\u{3297}]|[\u{303D}]|[\u{2B55}]|[\u{2B1C}]|[\u{2B1B}]|[\u{25AB}]|[\u{25AA}]|[\u{25B6}]|[\u{25C0}]|[\u{25FB}]|[\u{25FC}]|[\u{25FD}]|[\u{25FE}]|[\u{23EA}]|[\u{23E9}]|[\u{23EB}]|[\u{23EC}]|[\u{23F0}]|[\u{23F3}]|[\u{2705}]|[\u{2728}]|[\u{274C}]|[\u{274E}]|[\u{2753}]|[\u{2754}]|[\u{2755}]|[\u{2795}]|[\u{2796}]|[\u{2797}]|[\u{27B0}]|[\u{27BF}]|[\u{2934}]|[\u{2935}]|[\u{2B50}]|[\u{3030}]|[\u{303D}]|[\u{3297}]|[\u{3299}]|[\u{1F004}]|[\u{1F0CF}]|[\u{1F170}]|[\u{1F171}]|[\u{1F17E}]|[\u{1F17F}]|[\u{1F18E}]|[\u{1F191}-\u{1F19A}]|[\u{1F201}]|[\u{1F202}]|[\u{1F21A}]|[\u{1F22F}]|[\u{1F232}-\u{1F23A}]|[\u{1F250}]|[\u{1F251}]|[\u{1F300}-\u{1F320}]|[\u{1F32D}-\u{1F335}]|[\u{1F337}-\u{1F37C}]|[\u{1F37E}-\u{1F393}]|[\u{1F3A0}-\u{1F3CA}]|[\u{1F3CF}-\u{1F3D3}]|[\u{1F3E0}-\u{1F3F0}]|[\u{1F3F4}]|[\u{1F3F8}-\u{1F43E}]|[\u{1F440}]|[\u{1F442}-\u{1F4FC}]|[\u{1F4FF}]|[\u{1F500}-\u{1F53D}]|[\u{1F54B}-\u{1F54E}]|[\u{1F550}-\u{1F567}]|[\u{1F57A}]|[\u{1F595}]|[\u{1F596}]|[\u{1F5A4}]|[\u{1F5FB}-\u{1F64F}]|[\u{1F680}-\u{1F6C5}]|[\u{1F6CB}-\u{1F6D2}]|[\u{1F6E0}-\u{1F6E5}]|[\u{1F6E9}]|[\u{1F6EB}]|[\u{1F6EC}]|[\u{1F6F0}]|[\u{1F6F3}-\u{1F6F8}]|[\u{1F910}-\u{1F93A}]|[\u{1F93C}-\u{1F93E}]|[\u{1F940}-\u{1F945}]|[\u{1F947}-\u{1F94C}]|[\u{1F950}-\u{1F96B}]|[\u{1F980}-\u{1F997}]|[\u{1F9C0}]|[\u{1F9D0}-\u{1F9E6}]|[\u{200D}]|[\u{FE0F}]|[\u{E0020}-\u{E007A}])+$/u;
+  return emojiRegex.test(str);
 }
 
 function isAvatarUrl(value: string): boolean {
